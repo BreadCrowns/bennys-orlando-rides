@@ -24,6 +24,21 @@ let state = loadState();
 
 function loadState() {
   try {
+    // Check if opened via a cross-device #sync= link
+    if (window.location.hash && window.location.hash.startsWith("#sync=")) {
+      const encoded = window.location.hash.slice(6);
+      const json = decodeURIComponent(escape(atob(encoded)));
+      const synced = JSON.parse(json);
+      const merged = {
+        quiz: { ...DEFAULT_STATE.quiz, ...(synced.quiz || {}) },
+        rides: synced.rides || {},
+        ui: { ...DEFAULT_STATE.ui, ...(synced.ui || {}) }
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+      return merged;
+    }
+
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(DEFAULT_STATE);
     const parsed = JSON.parse(raw);
@@ -35,6 +50,12 @@ function loadState() {
   } catch {
     return structuredClone(DEFAULT_STATE);
   }
+}
+
+function buildSyncUrl() {
+  const payload = { quiz: state.quiz, rides: state.rides };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  return `${window.location.origin}${window.location.pathname}#sync=${encoded}`;
 }
 
 function saveState() {
@@ -691,7 +712,8 @@ function renderCheatSheet(profile) {
 
   container.innerHTML = `
     <div class="cheatsheet-actions">
-      <button type="button" class="btn-primary" id="btn-print">🖨️ Print Park Cheat Sheet</button>
+      <button type="button" class="btn-primary" id="btn-sync-link">🔗 Copy Sync Link (Open on Another Device)</button>
+      <button type="button" class="btn-secondary" id="btn-print">🖨️ Print Park Cheat Sheet</button>
       <button type="button" class="btn-secondary" id="btn-export">⬇️ Export Benny's Data (JSON)</button>
       <label class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
         ⬆️ Import Data
@@ -817,6 +839,19 @@ document.addEventListener("click", (e) => {
   }
 
   // Cheat sheet buttons
+  if (e.target.id === "btn-sync-link") {
+    const url = buildSyncUrl();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(
+        () => showToast("Sync link copied! Open it on any phone or tablet to load Benny's data."),
+        () => prompt("Copy this sync link:", url)
+      );
+    } else {
+      prompt("Copy this sync link:", url);
+    }
+    return;
+  }
+
   if (e.target.id === "btn-print") {
     window.print();
     return;
