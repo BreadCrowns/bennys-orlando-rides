@@ -1,7 +1,11 @@
 // Benny's Orlando Ride Explorer & Fun/Scare Predictor
 const STORAGE_KEY = "benny_orlando_quiz_v1";
+const GH_TOKEN_KEY = "benny_gh_token_v1";
+const GH_REPO = "BreadCrowns/bennys-orlando-rides";
+const GH_FILE = "benny-responses.json";
 
 const DEFAULT_STATE = {
+  updatedAt: 0,
   // rides[rideId] = { ridden: boolean, fun: 1-5|null, thrillFeel: 1-5|null, scareFeel: 1-5|null, gut: 'fun'|'boring'|'intense'|'scary'|null }
   rides: {},
   ui: {
@@ -74,6 +78,7 @@ function loadState() {
       const json = decodeURIComponent(escape(atob(encoded)));
       const synced = JSON.parse(json);
       const merged = {
+        updatedAt: synced.updatedAt || Date.now(),
         rides: migrateRidesMap(synced.rides),
         ui: { ...DEFAULT_STATE.ui, ...(synced.ui || {}) }
       };
@@ -86,6 +91,7 @@ function loadState() {
     if (!raw) return structuredClone(DEFAULT_STATE);
     const parsed = JSON.parse(raw);
     return {
+      updatedAt: parsed.updatedAt || 0,
       rides: migrateRidesMap(parsed.rides),
       ui: { ...DEFAULT_STATE.ui, ...(parsed.ui || {}) }
     };
@@ -94,8 +100,112 @@ function loadState() {
   }
 }
 
-function saveState() {
+function saveState(touchTimestamp = false) {
+  if (touchTimestamp) {
+    state.updatedAt = Date.now();
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function getGhToken() {
+  return localStorage.getItem(GH_TOKEN_KEY) || "";
+}
+
+async function loadRepoResponses(showFeedback = false) {
+  try {
+    const token = getGhToken();
+    let repoData = null;
+
+    if (token) {
+      // Fetch directly from GitHub API to bypass CDN caching
+      const res = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}?ref=master`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" }
+      });
+      if (res.ok) {
+        const meta = await res.json();
+        const decoded = decodeURIComponent(escape(atob(meta.content.replace(/\n/g, ""))));
+        repoData = JSON.parse(decoded);
+      }
+    }
+
+    if (!repoData) {
+      const res = await fetch(`./${GH_FILE}?t=${Date.now()}`);
+      if (!res.ok) return;
+      repoData = await res.json();
+    }
+
+    const repoRides = migrateRidesMap(repoData.rides || {});
+    const repoUpdated = repoData.updatedAt || 0;
+    const hasLocal = Object.keys(state.rides).length > 0;
+
+    if (!hasLocal || repoUpdated > (state.updatedAt || 0)) {
+      state.rides = { ...state.rides, ...repoRides };
+      state.updatedAt = Math.max(state.updatedAt || 0, repoUpdated);
+      saveState(false);
+      renderAll();
+      if (showFeedback) showToast("🔄 Loaded latest responses from GitHub repo!");
+    } else if (showFeedback) {
+      showToast("✓ Already up to date with GitHub repo.");
+    }
+  } catch {
+    if (showFeedback) showToast("Could not reach benny-responses.json right now.");
+  }
+}
+
+let pushTimer = null;
+async function pushToGitHub(immediate = false) {
+  const token = getGhToken();
+  if (!token) return;
+
+  const doPush = async () => {
+    try {
+      const getRes = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}?ref=master`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" }
+      });
+      let sha = undefined;
+      if (getRes.ok) {
+        const existing = await getRes.json();
+        sha = existing.sha;
+      }
+
+      const payload = {
+        updatedAt: state.updatedAt || Date.now(),
+        rides: state.rides
+      };
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2) + "\n")));
+
+      const putRes = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: "Update Benny's ride responses",
+          content,
+          branch: "master",
+          ...(sha ? { sha } : {})
+        })
+      });
+
+      if (putRes.ok) {
+        showToast("☁️ Saved to GitHub repo (benny-responses.json)!");
+      } else {
+        showToast("⚠️ GitHub sync failed — check your token permissions.");
+      }
+    } catch {
+      showToast("⚠️ Could not reach GitHub API (saved locally).");
+    }
+  };
+
+  clearTimeout(pushTimer);
+  if (immediate) {
+    await doPush();
+  } else {
+    // Debounce rapid clicks by 1.2s so we don't spam commits
+    pushTimer = setTimeout(doPush, 1200);
+  }
 }
 
 function buildSyncUrl() {
@@ -765,11 +875,31 @@ function renderCheatSheet(profile) {
     `;
   }
 
+  const hasToken = Boolean(getGhToken());
+
   container.innerHTML = `
+    <div class="dash-card" style="margin-bottom:18px;">
+      <h3>☁️ GitHub Repo Persistence (<code>benny-responses.json</code>)</h3>
+      <p style="font-size:0.86rem;color:var(--text-muted);margin:0 0 10px;">
+        Every device automatically loads saved answers from <code>benny-responses.json</code> in the repo.
+        ${
+          hasToken
+            ? `<strong style="color:var(--good);">✓ Auto-save to GitHub is active on this device!</strong> Every rating you tap commits to the repo.`
+            : `To let this browser push updates directly back to GitHub, paste a fine-grained Personal Access Token (with <em>Contents: Read &amp; Write</em> on <code>${GH_REPO}</code>).`
+        }
+      </p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <input type="password" id="gh-token-input" placeholder="${hasToken ? "Token saved (enter new to replace)" : "github_pat_..."}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;min-width:240px;font-size:0.86rem;" />
+        <button type="button" class="btn-primary" id="btn-gh-save">${hasToken ? "☁️ Push to GitHub Now" : "🔗 Save Token & Sync"}</button>
+        <button type="button" class="btn-secondary" id="btn-gh-pull">🔄 Pull Latest from Repo</button>
+        ${hasToken ? `<button type="button" class="btn-danger" id="btn-gh-clear">Disconnect Token</button>` : ""}
+      </div>
+    </div>
+
     <div class="cheatsheet-actions">
       <button type="button" class="btn-primary" id="btn-sync-link">🔗 Copy Sync Link (Open on Another Device)</button>
       <button type="button" class="btn-secondary" id="btn-print">🖨️ Print Park Cheat Sheet</button>
-      <button type="button" class="btn-secondary" id="btn-export">⬇️ Export Benny's Data (JSON)</button>
+      <button type="button" class="btn-secondary" id="btn-export">⬇️ Download benny-responses.json</button>
       <label class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
         ⬆️ Import Data
         <input type="file" id="input-import" accept="application/json" style="display:none;" />
@@ -859,8 +989,9 @@ document.addEventListener("click", (e) => {
     }
 
     state.rides[rideId] = current;
-    saveState();
+    saveState(true);
     renderAll();
+    pushToGitHub(false);
 
     const nextProfile = computeBennyProfile();
     const tDelta = nextProfile.thrillSweetSpot - prevProfile.thrillSweetSpot;
@@ -872,6 +1003,35 @@ document.addEventListener("click", (e) => {
     } else if (current.ridden && (action === "set-fun" || action === "set-thrill-feel" || action === "set-scare-feel")) {
       showToast("Saved! Fun & Scare predictions updated across all 7 parks.");
     }
+    return;
+  }
+
+  // GitHub Repo Sync buttons
+  if (e.target.id === "btn-gh-save") {
+    const input = document.getElementById("gh-token-input");
+    const val = input ? input.value.trim() : "";
+    if (val) {
+      localStorage.setItem(GH_TOKEN_KEY, val);
+    }
+    if (!getGhToken()) {
+      showToast("Please paste a GitHub token first.");
+      return;
+    }
+    saveState(true);
+    pushToGitHub(true);
+    renderCheatSheet(computeBennyProfile());
+    return;
+  }
+
+  if (e.target.id === "btn-gh-pull") {
+    loadRepoResponses(true);
+    return;
+  }
+
+  if (e.target.id === "btn-gh-clear") {
+    localStorage.removeItem(GH_TOKEN_KEY);
+    renderCheatSheet(computeBennyProfile());
+    showToast("Disconnected GitHub token from this browser.");
     return;
   }
 
@@ -895,11 +1055,12 @@ document.addEventListener("click", (e) => {
   }
 
   if (e.target.id === "btn-export") {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const payload = { updatedAt: state.updatedAt || Date.now(), rides: state.rides };
+    const blob = new Blob([JSON.stringify(payload, null, 2) + "\n"], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "benny-orlando-rides.json";
+    a.download = "benny-responses.json";
     a.click();
     URL.revokeObjectURL(url);
     return;
@@ -908,8 +1069,9 @@ document.addEventListener("click", (e) => {
   if (e.target.id === "btn-reset") {
     if (confirm("Reset all of Benny's ride ratings?")) {
       state = structuredClone(DEFAULT_STATE);
-      saveState();
+      saveState(true);
       renderAll();
+      pushToGitHub(true);
     }
   }
 });
@@ -928,11 +1090,13 @@ document.addEventListener("change", (e) => {
       try {
         const imported = JSON.parse(ev.target.result);
         state = {
+          updatedAt: imported.updatedAt || Date.now(),
           rides: migrateRidesMap(imported.rides),
           ui: { ...DEFAULT_STATE.ui, ...(imported.ui || {}) }
         };
-        saveState();
+        saveState(false);
         renderAll();
+        pushToGitHub(true);
       } catch {
         alert("Could not read that JSON file.");
       }
@@ -941,5 +1105,6 @@ document.addEventListener("change", (e) => {
   }
 });
 
-// Initial render
+// Initial render + load latest responses from repo
 renderAll();
+loadRepoResponses(false);
