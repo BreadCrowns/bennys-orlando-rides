@@ -1,37 +1,80 @@
-// Benny's Orlando Ride Explorer & 1-5 Predictor
+// Benny's Orlando Ride Explorer & Fun/Scare Predictor
 const STORAGE_KEY = "benny_orlando_quiz_v1";
 
 const DEFAULT_STATE = {
-  quiz: {
-    thrillPref: 3,
-    scarePref: 2,
-    nudgeWillingness: 1,
-    spinPref: 2
-  },
-  // rides[rideId] = { ridden: boolean, thrill: number|null, scare: number|null, enjoy: 'love'|'ok'|'nope'|null }
+  // rides[rideId] = { ridden: boolean, fun: 1-5|null, thrillFeel: 1-5|null, scareFeel: 1-5|null, gut: 'fun'|'boring'|'intense'|'scary'|null }
   rides: {},
   ui: {
     activeView: "explorer",
     resortFilter: "all",
     activeParkId: "magic-kingdom",
     statusFilter: "all",
-    search: "",
-    quizCollapsed: false
+    search: ""
   }
 };
 
+const THRILL_LABELS = [
+  { val: 1, short: "Too Boring", emoji: "😴" },
+  { val: 2, short: "Chill", emoji: "🙂" },
+  { val: 3, short: "Just Right!", emoji: "🎯" },
+  { val: 4, short: "Wild", emoji: "🤩" },
+  { val: 5, short: "Too Much", emoji: "😵" }
+];
+
+const SCARE_LABELS = [
+  { val: 1, short: "Not Scary", emoji: "☀️" },
+  { val: 2, short: "Fun Spooky", emoji: "🎃" },
+  { val: 3, short: "A Little", emoji: "😬" },
+  { val: 4, short: "Pretty Scary", emoji: "😨" },
+  { val: 5, short: "Too Scary!", emoji: "😱" }
+];
+
+const FUN_LABELS = [
+  { val: 1, short: "Boring" },
+  { val: 2, short: "Meh" },
+  { val: 3, short: "Good" },
+  { val: 4, short: "Really Fun" },
+  { val: 5, short: "Best Ever!" }
+];
+
 let state = loadState();
+
+function migrateEntry(raw) {
+  if (!raw || typeof raw !== "object") {
+    return { ridden: false, fun: null, thrillFeel: null, scareFeel: null, gut: null };
+  }
+  const entry = {
+    ridden: Boolean(raw.ridden),
+    fun: raw.fun ?? null,
+    thrillFeel: raw.thrillFeel ?? null,
+    scareFeel: raw.scareFeel ?? null,
+    gut: raw.gut ?? null
+  };
+  // Migrate v1 enjoyment field if present
+  if (entry.fun === null && raw.enjoy) {
+    if (raw.enjoy === "love") entry.fun = 5;
+    else if (raw.enjoy === "ok") entry.fun = 3;
+    else if (raw.enjoy === "nope") entry.fun = 1;
+  }
+  return entry;
+}
+
+function migrateRidesMap(ridesObj) {
+  const out = {};
+  for (const [id, entry] of Object.entries(ridesObj || {})) {
+    out[id] = migrateEntry(entry);
+  }
+  return out;
+}
 
 function loadState() {
   try {
-    // Check if opened via a cross-device #sync= link
     if (window.location.hash && window.location.hash.startsWith("#sync=")) {
       const encoded = window.location.hash.slice(6);
       const json = decodeURIComponent(escape(atob(encoded)));
       const synced = JSON.parse(json);
       const merged = {
-        quiz: { ...DEFAULT_STATE.quiz, ...(synced.quiz || {}) },
-        rides: synced.rides || {},
+        rides: migrateRidesMap(synced.rides),
         ui: { ...DEFAULT_STATE.ui, ...(synced.ui || {}) }
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
@@ -43,8 +86,7 @@ function loadState() {
     if (!raw) return structuredClone(DEFAULT_STATE);
     const parsed = JSON.parse(raw);
     return {
-      quiz: { ...DEFAULT_STATE.quiz, ...(parsed.quiz || {}) },
-      rides: parsed.rides || {},
+      rides: migrateRidesMap(parsed.rides),
       ui: { ...DEFAULT_STATE.ui, ...(parsed.ui || {}) }
     };
   } catch {
@@ -52,14 +94,14 @@ function loadState() {
   }
 }
 
-function buildSyncUrl() {
-  const payload = { quiz: state.quiz, rides: state.rides };
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-  return `${window.location.origin}${window.location.pathname}#sync=${encoded}`;
-}
-
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function buildSyncUrl() {
+  const payload = { rides: state.rides };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  return `${window.location.origin}${window.location.pathname}#sync=${encoded}`;
 }
 
 function getAllRides() {
@@ -84,50 +126,59 @@ function getAllRides() {
 
 const ALL_RIDES = getAllRides();
 
-// Compute Benny's calibrated Thrill & Scare profile from Quiz + Ridden Rides
-function computeBennyProfile() {
-  const { thrillPref, scarePref, nudgeWillingness, spinPref } = state.quiz;
+function clamp(val, min, max) {
+  return Math.max(min, Math.min(max, val));
+}
 
+// Learn Benny's Thrill Sweet Spot, Boring Floor, Scare Comfort, and Tag Affinities
+// directly from the rides he has ridden and rated.
+function computeBennyProfile() {
   const riddenEntries = ALL_RIDES
     .map((ride) => ({ ride, entry: state.rides[ride.id] }))
     .filter((x) => x.entry && x.entry.ridden);
 
-  let lovedThrills = [];
-  let lovedScares = [];
-  let nopeThrills = [];
-  let nopeScares = [];
-  let thrillDiffs = [];
-  let scareDiffs = [];
-  const tagScores = {}; // tag -> { sum, count }
+  const sweetThrills = [];
+  const boringThrills = [];
+  const tooMuchThrills = [];
+  const comfyScares = [];
+  const tooScaryScares = [];
+  const tagScores = {};
 
   for (const { ride, entry } of riddenEntries) {
-    // Use objective guide rating to know what intensity he actually conquered,
-    // blended with his own rating if he felt it was even higher.
-    const effectiveT = entry.thrill ? Math.max(ride.thrillBase, entry.thrill) : ride.thrillBase;
-    const effectiveS = entry.scare ? Math.max(ride.scareBase, entry.scare) : ride.scareBase;
+    const fun = entry.fun;
+    const tFeel = entry.thrillFeel;
+    const sFeel = entry.scareFeel;
 
-    if (entry.thrill != null) {
-      thrillDiffs.push(entry.thrill - ride.thrillBase);
-    }
-    if (entry.scare != null) {
-      scareDiffs.push(entry.scare - ride.scareBase);
-    }
-
-    if (entry.enjoy === "love") {
-      lovedThrills.push(effectiveT);
-      lovedScares.push(effectiveS);
-    } else if (entry.enjoy === "ok") {
-      lovedThrills.push(effectiveT * 0.92);
-      lovedScares.push(effectiveS * 0.92);
-    } else if (entry.enjoy === "nope") {
-      // If he disliked it, use the rating (or guide rating) as an upper bound signal
-      nopeThrills.push(entry.thrill ?? ride.thrillBase);
-      nopeScares.push(entry.scare ?? ride.scareBase);
+    // Thrill learning
+    if (tFeel === 1) {
+      boringThrills.push(ride.thrillBase);
+    } else if (tFeel === 5) {
+      tooMuchThrills.push(ride.thrillBase);
+    } else if (tFeel === 2 || tFeel === 3 || tFeel === 4) {
+      const weight = tFeel === 3 ? 2 : 1;
+      for (let i = 0; i < weight; i++) sweetThrills.push(ride.thrillBase);
+    } else if (fun !== null) {
+      if (fun >= 4) sweetThrills.push(ride.thrillBase);
+      else if (fun <= 2 && ride.thrillBase <= 2) boringThrills.push(ride.thrillBase);
+      else if (fun === 1 && ride.thrillBase >= 4) tooMuchThrills.push(ride.thrillBase);
     }
 
-    // Track tag-level learning (e.g., coasters, in-the-dark, drop, simulator, spinning, water)
-    if (entry.enjoy) {
-      const delta = entry.enjoy === "love" ? 1 : entry.enjoy === "ok" ? 0.25 : -1;
+    // Scare learning
+    if (sFeel !== null) {
+      if (sFeel <= 3) {
+        comfyScares.push(ride.scareBase);
+      } else if (sFeel === 4) {
+        comfyScares.push(ride.scareBase - 0.5);
+      } else if (sFeel === 5) {
+        tooScaryScares.push(ride.scareBase);
+      }
+    } else if (fun !== null) {
+      if (fun >= 4) comfyScares.push(ride.scareBase);
+    }
+
+    // Tag affinity learning from Fun (1-5)
+    if (fun !== null) {
+      const delta = (fun - 3) / 2; // -1.0 to +1.0
       for (const tag of ride.tags || []) {
         if (!tagScores[tag]) tagScores[tag] = { sum: 0, count: 0 };
         tagScores[tag].sum += delta;
@@ -136,152 +187,145 @@ function computeBennyProfile() {
     }
   }
 
-  // Blend quiz preference with actual ridden feedback (more rides = stronger calibration)
-  let thrillComfort = thrillPref;
-  if (lovedThrills.length > 0) {
-    const maxLovedT = Math.max(...lovedThrills);
-    const avgLovedT = lovedThrills.reduce((a, b) => a + b, 0) / lovedThrills.length;
-    const learnedT = avgLovedT * 0.45 + maxLovedT * 0.55;
-    const weight = Math.min(0.75, lovedThrills.length * 0.14);
-    thrillComfort = thrillPref * (1 - weight) + learnedT * weight;
-  }
-  if (nopeThrills.length > 0) {
-    const minNopeT = Math.min(...nopeThrills);
-    if (minNopeT <= thrillComfort) {
-      thrillComfort = Math.max(1, minNopeT - 0.5);
-    }
+  // Compute Thrill Sweet Spot (default 3.0 for a 10yo until calibrated)
+  let thrillSweetSpot = 3.0;
+  if (sweetThrills.length > 0) {
+    const avg = sweetThrills.reduce((a, b) => a + b, 0) / sweetThrills.length;
+    const maxSweet = Math.max(...sweetThrills);
+    const learned = avg * 0.6 + maxSweet * 0.4;
+    const blend = Math.min(0.85, sweetThrills.length * 0.22);
+    thrillSweetSpot = 3.0 * (1 - blend) + learned * blend;
   }
 
-  let scareComfort = scarePref;
-  if (lovedScares.length > 0) {
-    const maxLovedS = Math.max(...lovedScares);
-    const avgLovedS = lovedScares.reduce((a, b) => a + b, 0) / lovedScares.length;
-    const learnedS = avgLovedS * 0.4 + maxLovedS * 0.6;
-    const weight = Math.min(0.75, lovedScares.length * 0.14);
-    scareComfort = scarePref * (1 - weight) + learnedS * weight;
-  }
-  if (nopeScares.length > 0) {
-    const minNopeS = Math.min(...nopeScares);
-    if (minNopeS <= scareComfort) {
-      scareComfort = Math.max(1, minNopeS - 0.5);
-    }
+  let thrillCeiling = 5.0;
+  if (tooMuchThrills.length > 0) {
+    thrillCeiling = Math.min(...tooMuchThrills) - 0.4;
+    thrillSweetSpot = Math.min(thrillSweetSpot, thrillCeiling);
   }
 
-  const thrillBias =
-    thrillDiffs.length >= 2
-      ? clamp(thrillDiffs.reduce((a, b) => a + b, 0) / thrillDiffs.length, -1, 1)
-      : 0;
-  const scareBias =
-    scareDiffs.length >= 2
-      ? clamp(scareDiffs.reduce((a, b) => a + b, 0) / scareDiffs.length, -1, 1)
-      : 0;
+  // Compute Boring Floor (rides at or below this thrill level feel too tame)
+  let boringFloor = 0.7;
+  if (boringThrills.length > 0) {
+    const maxBoring = Math.max(...boringThrills);
+    boringFloor = Math.min(maxBoring + 0.15, thrillSweetSpot - 0.6);
+  } else if (thrillSweetSpot >= 3.8) {
+    // If Benny loves big thrills, gentle 1/5 rides naturally score a bit lower
+    boringFloor = 1.1;
+  }
+
+  // Compute Scare Comfort (default 2.5 until calibrated)
+  let scareComfort = 2.5;
+  if (comfyScares.length > 0) {
+    const avg = comfyScares.reduce((a, b) => a + b, 0) / comfyScares.length;
+    const maxComfy = Math.max(...comfyScares);
+    const learned = avg * 0.45 + maxComfy * 0.55;
+    const blend = Math.min(0.85, comfyScares.length * 0.22);
+    scareComfort = 2.5 * (1 - blend) + learned * blend;
+  }
+  if (tooScaryScares.length > 0) {
+    const minTooScary = Math.min(...tooScaryScares);
+    scareComfort = Math.min(scareComfort, minTooScary - 0.6);
+  }
 
   return {
-    thrillComfort: clamp(thrillComfort, 1, 5),
+    thrillSweetSpot: clamp(thrillSweetSpot, 1, 5),
+    thrillCeiling: clamp(thrillCeiling, 1, 5),
+    boringFloor: clamp(boringFloor, 0.5, 3.5),
     scareComfort: clamp(scareComfort, 1, 5),
-    thrillBias,
-    scareBias,
     tagScores,
-    nudgeWillingness,
-    spinPref,
     riddenCount: riddenEntries.length
   };
 }
 
-function clamp(val, min, max) {
-  return Math.max(min, Math.min(max, val));
-}
-
-// Predict 1-5 Thrill Match, 1-5 Scare Match, Overall Match (1-5), and Brave Nudge status
+// Predict Fun (1-5), Scare Comfort (1-5), and Brave Nudge status for an un-ridden ride
 function predictRide(ride, profile) {
   const entry = state.rides[ride.id] || {};
 
-  // Adjust expected perceived intensity slightly by Benny's personal rating bias
-  const expectedThrill = clamp(ride.thrillBase + profile.thrillBias * 0.4, 1, 5);
-  const expectedScare = clamp(ride.scareBase + profile.scareBias * 0.4, 1, 5);
+  // 1. Scare Comfort (1-5): 5 = totally comfortable, 1 = likely too scary
+  const scareDiff = ride.scareBase - profile.scareComfort;
+  let scareComfortScore = scareDiff <= 0 ? 5 : clamp(5 - scareDiff * 1.45, 1, 5);
 
-  // Thrill Match (1-5): 5 means right in his sweet spot; drops if too intense or way too tame
-  const thrillDiff = expectedThrill - profile.thrillComfort;
-  let thrillMatch;
-  if (thrillDiff <= 0) {
-    thrillMatch = thrillDiff < -2.2 ? 3.5 : thrillDiff < -1.2 ? 4.3 : 5;
-  } else {
-    thrillMatch = clamp(5 - thrillDiff * 1.45, 1, 5);
+  // 2. Fun Score (1-5): peaks at thrillSweetSpot, drops if too boring OR too intense/scary
+  let funScore = 4.6;
+
+  // Penalty if too boring
+  if (ride.thrillBase <= profile.boringFloor) {
+    const boringGap = profile.boringFloor - ride.thrillBase;
+    funScore -= 1.8 + boringGap * 0.8;
+  } else if (ride.thrillBase < profile.thrillSweetSpot - 1.2) {
+    funScore -= (profile.thrillSweetSpot - 1.2 - ride.thrillBase) * 0.55;
   }
 
-  // Spinning penalty if Benny dislikes spinning
-  if (profile.spinPref === 1 && ride.tags.includes("spinning")) {
-    thrillMatch = clamp(thrillMatch - 1.2, 1, 5);
+  // Penalty if above thrill sweet spot or ceiling
+  if (ride.thrillBase > profile.thrillCeiling) {
+    funScore -= (ride.thrillBase - profile.thrillCeiling) * 1.6;
+  } else if (ride.thrillBase > profile.thrillSweetSpot + 0.6) {
+    funScore -= (ride.thrillBase - (profile.thrillSweetSpot + 0.6)) * 0.9;
   }
 
-  // Scare Match (1-5): 5 means totally comfortable with atmosphere/lighting
-  const scareDiff = expectedScare - profile.scareComfort;
-  let scareMatch;
-  if (scareDiff <= 0) {
-    scareMatch = 5;
-  } else {
-    scareMatch = clamp(5 - scareDiff * 1.4, 1, 5);
+  // Penalty if likely too scary
+  if (scareDiff > 0.6) {
+    funScore -= (scareDiff - 0.6) * 0.85;
   }
 
-  // Tag affinity adjustment learned from rides Benny logged this week
+  // Tag affinity learned from his rated rides
   let tagBonus = 0;
   for (const tag of ride.tags || []) {
     const stat = profile.tagScores[tag];
-    if (stat && stat.count >= 2) {
-      tagBonus += (stat.sum / stat.count) * 0.35;
+    if (stat && stat.count >= 1) {
+      const weight = Math.min(0.45, stat.count * 0.2);
+      tagBonus += (stat.sum / stat.count) * weight;
     }
   }
-  tagBonus = clamp(tagBonus, -0.75, 0.75);
+  funScore += clamp(tagBonus, -0.9, 0.9);
 
-  // Check if Benny guessed a scare/thrill for this unridden ride
-  const guessedScare = !entry.ridden ? entry.scare : null;
-  const guessedTooScary = guessedScare !== null && guessedScare > ride.scareBase;
+  // Respect his gut reaction slightly if he tapped "Looks Super Fun" or "Looks Boring"
+  if (entry.gut === "fun") funScore += 0.35;
+  if (entry.gut === "boring") funScore -= 0.7;
+  if (entry.gut === "intense") funScore -= 0.4;
+
+  const predictedFun = Math.round(clamp(funScore, 1, 5));
+  const predictedScareComfort = Math.round(clamp(scareComfortScore, 1, 5));
 
   // Brave Nudge detection:
-  // Ride looks scarier than his comfort (or he guessed it's scarier than it is),
-  // BUT the actual locomotion/thrill is doable for him!
-  const thrillIsDoable = expectedThrill <= profile.thrillComfort + 0.6;
-  const scareIsStretch =
-    (scareDiff > 0.2 && scareDiff <= 2.1) || guessedTooScary;
+  // Ride looks spooky/scary (or Benny tapped "Looks Too Scary!"),
+  // BUT the actual ride motion is doable and should be fun!
+  const motionIsDoable =
+    ride.thrillBase <= profile.thrillSweetSpot + 0.7 &&
+    ride.thrillBase > profile.boringFloor &&
+    ride.thrillBase <= profile.thrillCeiling;
+  const scareIsStretch = scareDiff > 0.2 && scareDiff <= 1.9;
   const isBraveNudge =
     !entry.ridden &&
-    profile.nudgeWillingness > 0 &&
-    thrillIsDoable &&
-    scareIsStretch &&
-    thrillMatch >= 3;
+    motionIsDoable &&
+    (entry.gut === "scary" || scareIsStretch);
 
-  // Overall 1-5 Match
-  let overallRaw = thrillMatch * 0.55 + scareMatch * 0.45 + tagBonus;
-  if (isBraveNudge && profile.nudgeWillingness === 2) {
-    overallRaw = Math.max(overallRaw, 3.4);
-  }
-
-  const thrillScore = Math.round(clamp(thrillMatch, 1, 5));
-  const scareScore = Math.round(clamp(scareMatch, 1, 5));
-  const overallScore = Math.round(clamp(overallRaw, 1, 5));
-
-  let badgeText = "⏳ Save for Later";
+  let badgeText = "🤔 Might Be Okay";
   let boxClass = "match-low";
-  if (isBraveNudge && overallScore <= 4) {
+  if (isBraveNudge) {
     badgeText = "🚀 Brave Nudge!";
     boxClass = "match-nudge";
-  } else if (overallScore === 5) {
-    badgeText = "🔥 5/5 Slam Dunk!";
+  } else if (ride.thrillBase <= profile.boringFloor || entry.gut === "boring") {
+    badgeText = "😴 Might Feel Boring";
+    boxClass = "match-low";
+  } else if (predictedFun === 5) {
+    badgeText = "🔥 5/5 Must-Ride!";
     boxClass = "match-5";
-  } else if (overallScore === 4) {
-    badgeText = "👍 4/5 Great Match!";
+  } else if (predictedFun === 4) {
+    badgeText = "👍 4/5 Really Fun!";
     boxClass = "match-4";
-  } else if (overallScore === 3) {
-    badgeText = "🤔 3/5 Maybe Try";
+  } else if (ride.thrillBase > profile.thrillCeiling) {
+    badgeText = "⚡ Probably Too Intense";
+    boxClass = "match-low";
+  } else if (predictedScareComfort <= 2) {
+    badgeText = "👻 Might Be Too Scary";
     boxClass = "match-low";
   }
 
   return {
-    thrillScore,
-    scareScore,
-    overallScore,
+    predictedFun,
+    predictedScareComfort,
     isBraveNudge,
-    guessedTooScary,
     badgeText,
     boxClass
   };
@@ -291,7 +335,6 @@ function predictRide(ride, profile) {
 function renderAll() {
   const profile = computeBennyProfile();
   renderStatsBar(profile);
-  renderQuizControls();
   renderParkTabs();
   renderExplorerRides(profile);
   renderPredictionsDashboard(profile);
@@ -301,52 +344,32 @@ function renderAll() {
 function renderStatsBar(profile) {
   const total = ALL_RIDES.length;
   const nudges = ALL_RIDES.filter((r) => predictRide(r, profile).isBraveNudge).length;
-  const topMatches = ALL_RIDES.filter(
-    (r) => !state.rides[r.id]?.ridden && predictRide(r, profile).overallScore >= 4
+  const topFun = ALL_RIDES.filter(
+    (r) => !state.rides[r.id]?.ridden && predictRide(r, profile).predictedFun >= 4
   ).length;
 
   document.getElementById("stats-bar").innerHTML = `
     <div class="stat-box">
-      <div class="stat-label">Rides Ridden</div>
+      <div class="stat-label">Rides Rated</div>
       <div class="stat-value">${profile.riddenCount} <span style="font-size:0.85rem;font-weight:500;">/ ${total}</span></div>
-      <div class="stat-sub">Across 7 parks</div>
+      <div class="stat-sub">${profile.riddenCount === 0 ? "Rate rides to calibrate!" : "Predictions calibrated"}</div>
     </div>
     <div class="stat-box">
-      <div class="stat-label">⚡ Thrill Sweet Spot</div>
-      <div class="stat-value">${profile.thrillComfort.toFixed(1)} / 5</div>
-      <div class="stat-sub">Locomotion comfort</div>
+      <div class="stat-label">🎯 Thrill Sweet Spot</div>
+      <div class="stat-value">${profile.thrillSweetSpot.toFixed(1)} / 5</div>
+      <div class="stat-sub">Ideal motion level</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">👻 Scare Comfort</div>
       <div class="stat-value">${profile.scareComfort.toFixed(1)} / 5</div>
-      <div class="stat-sub">Lighting &amp; theming</div>
+      <div class="stat-sub">Lighting &amp; spooky sets</div>
     </div>
     <div class="stat-box">
       <div class="stat-label">🚀 Brave Nudges</div>
       <div class="stat-value">${nudges}</div>
-      <div class="stat-sub">${topMatches} top 4–5/5 matches</div>
+      <div class="stat-sub">${topFun} rides predicted 4–5/5 Fun</div>
     </div>
   `;
-}
-
-function renderQuizControls() {
-  const body = document.getElementById("calibration-body");
-  const btn = document.getElementById("calibration-collapse-btn");
-  if (state.ui.quizCollapsed) {
-    body.classList.add("collapsed");
-    btn.textContent = "Show Quiz";
-  } else {
-    body.classList.remove("collapsed");
-    btn.textContent = "Hide Quiz";
-  }
-
-  document.querySelectorAll(".pill-scale").forEach((group) => {
-    const key = group.dataset.quiz;
-    const current = state.quiz[key];
-    group.querySelectorAll("button").forEach((b) => {
-      b.classList.toggle("active", Number(b.dataset.val) === current);
-    });
-  });
 }
 
 function renderParkTabs() {
@@ -382,7 +405,6 @@ function renderExplorerRides(profile) {
   const search = state.ui.search.trim().toLowerCase();
   const statusFilter = state.ui.statusFilter;
 
-  // If searching across all parks, show matching parks; otherwise show active park
   const parksToShow = search
     ? PARKS_DATA.filter(
         (p) => state.ui.resortFilter === "all" || p.resort === state.ui.resortFilter
@@ -407,7 +429,7 @@ function renderExplorerRides(profile) {
         if (statusFilter === "ridden" && !entry.ridden) return false;
         if (statusFilter === "unridden" && entry.ridden) return false;
         if (statusFilter === "nudge" && !pred.isBraveNudge) return false;
-        if (statusFilter === "top-match" && (entry.ridden || pred.overallScore < 4)) return false;
+        if (statusFilter === "top-match" && (entry.ridden || pred.predictedFun < 4)) return false;
 
         return true;
       });
@@ -446,7 +468,13 @@ function renderExplorerRides(profile) {
 }
 
 function renderRideCard(ride, profile) {
-  const entry = state.rides[ride.id] || { ridden: false, thrill: null, scare: null, enjoy: null };
+  const entry = state.rides[ride.id] || {
+    ridden: false,
+    fun: null,
+    thrillFeel: null,
+    scareFeel: null,
+    gut: null
+  };
   const pred = predictRide(ride, profile);
 
   const cardClasses = [
@@ -457,8 +485,8 @@ function renderRideCard(ride, profile) {
     .filter(Boolean)
     .join(" ");
 
-  const thrillLabel = entry.ridden ? "Benny's Thrill Rating (1–5)" : "Benny's Thrill Guess (optional)";
-  const scareLabel = entry.ridden ? "Benny's Scare Rating (1–5)" : "Benny's Scare Guess (optional)";
+  const thrillSelected = THRILL_LABELS.find((x) => x.val === entry.thrillFeel);
+  const scareSelected = SCARE_LABELS.find((x) => x.val === entry.scareFeel);
 
   return `
     <article class="${cardClasses}" data-ride-id="${ride.id}">
@@ -467,8 +495,8 @@ function renderRideCard(ride, profile) {
           <h4 class="ride-name">${ride.name}</h4>
           <div class="ride-meta">
             <span class="meta-pill">📏 ${ride.height}</span>
-            <span class="meta-pill">⚡ Guide: ${ride.thrillBase}/5</span>
-            <span class="meta-pill">👻 Guide: ${ride.scareBase}/5</span>
+            <span class="meta-pill">⚡ Motion: ${ride.thrillBase}/5</span>
+            <span class="meta-pill">👻 Spook: ${ride.scareBase}/5</span>
           </div>
         </div>
       </div>
@@ -485,74 +513,92 @@ function renderRideCard(ride, profile) {
       ${
         entry.ridden
           ? `
-        <div class="enjoy-row">
-          <button type="button" class="enjoy-btn ${entry.enjoy === "love" ? "active-love" : ""}" data-action="set-enjoy" data-val="love">😍 Loved It</button>
-          <button type="button" class="enjoy-btn ${entry.enjoy === "ok" ? "active-ok" : ""}" data-action="set-enjoy" data-val="ok">😐 It Was Okay</button>
-          <button type="button" class="enjoy-btn ${entry.enjoy === "nope" ? "active-nope" : ""}" data-action="set-enjoy" data-val="nope">😬 Too Much</button>
+        <div class="rating-group">
+          <div class="rating-box fun-box">
+            <div class="rating-box-header">
+              <span>🎉 How Fun Was It? (1–5)</span>
+              <span>${entry.fun ? `${entry.fun}/5 · ${FUN_LABELS.find((f) => f.val === entry.fun)?.short}` : "—"}</span>
+            </div>
+            <div class="scale-1-5">
+              ${FUN_LABELS.map(
+                (f) => `
+                <button type="button" class="scale-btn ${entry.fun === f.val ? "active" : ""}" data-action="set-fun" data-val="${f.val}" title="${f.short}">
+                  ${f.val}<div style="font-size:0.65rem;font-weight:600;">${f.short}</div>
+                </button>
+              `
+              ).join("")}
+            </div>
+          </div>
+
+          <div class="rating-box thrill-box">
+            <div class="rating-box-header">
+              <span>⚡ How Did the Thrill Feel?</span>
+              <span>${thrillSelected ? `${thrillSelected.emoji} ${thrillSelected.short}` : "—"}</span>
+            </div>
+            <p class="rating-desc">${ride.thrillDesc}</p>
+            <div class="goldilocks-scale">
+              ${THRILL_LABELS.map(
+                (t) => `
+                <button type="button" class="goldilocks-btn ${entry.thrillFeel === t.val ? "active" : ""}" data-action="set-thrill-feel" data-val="${t.val}">
+                  ${t.emoji}<br/>${t.short}
+                </button>
+              `
+              ).join("")}
+            </div>
+          </div>
+
+          <div class="rating-box scare-box">
+            <div class="rating-box-header">
+              <span>👻 How Scary Were the Sets/Lights?</span>
+              <span>${scareSelected ? `${scareSelected.emoji} ${scareSelected.short}` : "—"}</span>
+            </div>
+            <p class="rating-desc">${ride.scareDesc}</p>
+            <div class="goldilocks-scale">
+              ${SCARE_LABELS.map(
+                (s) => `
+                <button type="button" class="goldilocks-btn ${entry.scareFeel === s.val ? "active" : ""}" data-action="set-scare-feel" data-val="${s.val}">
+                  ${s.emoji}<br/>${s.short}
+                </button>
+              `
+              ).join("")}
+            </div>
+          </div>
         </div>
       `
-          : ""
-      }
+          : `
+        <div class="rating-group">
+          <div class="gut-box">
+            <div class="rating-box-header" style="margin-bottom:8px;">
+              <span>💭 Benny's Gut Reaction (Optional)</span>
+            </div>
+            <p class="rating-desc"><strong>Motion:</strong> ${ride.thrillDesc}<br/><strong>Sets/Lights:</strong> ${ride.scareDesc}</p>
+            <div class="gut-grid">
+              <button type="button" class="gut-btn ${entry.gut === "fun" ? "active-fun" : ""}" data-action="set-gut" data-val="fun">🤩 Looks Super Fun!</button>
+              <button type="button" class="gut-btn ${entry.gut === "boring" ? "active-boring" : ""}" data-action="set-gut" data-val="boring">😴 Looks Boring</button>
+              <button type="button" class="gut-btn ${entry.gut === "intense" ? "active-intense" : ""}" data-action="set-gut" data-val="intense">⚡ Looks Too Intense</button>
+              <button type="button" class="gut-btn ${entry.gut === "scary" ? "active-scary" : ""}" data-action="set-gut" data-val="scary">👻 Looks Too Scary!</button>
+            </div>
+          </div>
 
-      <div class="rating-group">
-        <div class="rating-box thrill-box">
-          <div class="rating-box-header">
-            <span>⚡ ${thrillLabel}</span>
-            <span>${entry.thrill ? `${entry.thrill}/5` : "—"}</span>
+          <div class="prediction-box ${pred.boxClass}">
+            <div class="prediction-header">
+              <strong>Prediction</strong>
+              <span class="pred-badge">${pred.badgeText}</span>
+            </div>
+            <div class="pred-scores">
+              <span>🎉 Predicted Fun: <strong>${pred.predictedFun}/5</strong></span>
+              <span>👻 Scare Comfort: <strong>${pred.predictedScareComfort}/5</strong></span>
+            </div>
+            <p class="nudge-tip">
+              ${
+                entry.gut === "scary" && pred.isBraveNudge
+                  ? `<strong>You think it looks too scary—</strong>`
+                  : ""
+              }${ride.nudgeTip}
+            </p>
           </div>
-          <p class="rating-desc">${ride.thrillDesc}</p>
-          <div class="scale-1-5">
-            ${[1, 2, 3, 4, 5]
-              .map(
-                (n) => `
-              <button type="button" class="scale-btn ${entry.thrill === n ? "active" : ""}" data-action="set-thrill" data-val="${n}">${n}</button>
-            `
-              )
-              .join("")}
-          </div>
-        </div>
-
-        <div class="rating-box scare-box">
-          <div class="rating-box-header">
-            <span>👻 ${scareLabel}</span>
-            <span>${entry.scare ? `${entry.scare}/5` : "—"}</span>
-          </div>
-          <p class="rating-desc">${ride.scareDesc}</p>
-          <div class="scale-1-5">
-            ${[1, 2, 3, 4, 5]
-              .map(
-                (n) => `
-              <button type="button" class="scale-btn ${entry.scare === n ? "active" : ""}" data-action="set-scare" data-val="${n}">${n}</button>
-            `
-              )
-              .join("")}
-          </div>
-        </div>
-      </div>
-
-      ${
-        !entry.ridden
-          ? `
-        <div class="prediction-box ${pred.boxClass}">
-          <div class="prediction-header">
-            <strong>1–5 Prediction</strong>
-            <span class="pred-badge">${pred.badgeText}</span>
-          </div>
-          <div class="pred-scores">
-            <span>⚡ Thrill Match: ${pred.thrillScore}/5</span>
-            <span>👻 Scare Match: ${pred.scareScore}/5</span>
-            <span>🎯 Overall: ${pred.overallScore}/5</span>
-          </div>
-          <p class="nudge-tip">
-            ${
-              pred.guessedTooScary
-                ? `<strong>Good news!</strong> You guessed ${entry.scare}/5 scare, but it's really ~${ride.scareBase}/5. `
-                : ""
-            }${ride.nudgeTip}
-          </p>
         </div>
       `
-          : ""
       }
     </article>
   `;
@@ -567,20 +613,20 @@ function renderPredictionsDashboard(profile) {
 
   const nudgeRides = unridden.filter((x) => x.pred.isBraveNudge);
   const topRides = unridden
-    .filter((x) => !x.pred.isBraveNudge && x.pred.overallScore >= 4)
-    .sort((a, b) => b.pred.overallScore - a.pred.overallScore);
+    .filter((x) => !x.pred.isBraveNudge && x.pred.predictedFun >= 4)
+    .sort((a, b) => b.pred.predictedFun - a.pred.predictedFun);
 
-  const thrillPct = (profile.thrillComfort / 5) * 100;
+  const thrillPct = (profile.thrillSweetSpot / 5) * 100;
   const scarePct = (profile.scareComfort / 5) * 100;
 
   container.innerHTML = `
     <div class="dashboard-grid">
       <div class="dash-card">
-        <h3>⚡ Benny's Thrill Sweet Spot</h3>
-        <div style="font-size:1.6rem;font-weight:800;color:var(--thrill);">${profile.thrillComfort.toFixed(1)} / 5</div>
+        <h3>🎯 Benny's Thrill Sweet Spot</h3>
+        <div style="font-size:1.6rem;font-weight:800;color:var(--thrill);">${profile.thrillSweetSpot.toFixed(1)} / 5</div>
         <div class="meter-bar"><div class="meter-fill" style="width:${thrillPct}%;background:var(--thrill);"></div></div>
         <p style="font-size:0.86rem;color:var(--text-muted);margin:0;">
-          Measures locomotion comfort (speed, drops, launches, loops). Learned from your quiz + ${profile.riddenCount} ridden rides.
+          Learned from ${profile.riddenCount} rated ride${profile.riddenCount === 1 ? "" : "s"}. Rides at or below ${profile.boringFloor.toFixed(1)}/5 may feel too boring.
         </p>
       </div>
       <div class="dash-card">
@@ -588,19 +634,19 @@ function renderPredictionsDashboard(profile) {
         <div style="font-size:1.6rem;font-weight:800;color:var(--scare);">${profile.scareComfort.toFixed(1)} / 5</div>
         <div class="meter-bar"><div class="meter-fill" style="width:${scarePct}%;background:var(--scare);"></div></div>
         <p style="font-size:0.86rem;color:var(--text-muted);margin:0;">
-          Measures comfort with dark rooms, spooky set dressings, monsters, and loud lighting effects.
+          Measures comfort with dark rooms, spooky set dressings, monsters, and sudden lighting effects.
         </p>
       </div>
       <div class="dash-card">
-        <h3>🚀 Brave Nudge Strategy</h3>
+        <h3>🚀 Brave Nudge Zone</h3>
         <div style="font-size:1.6rem;font-weight:800;color:var(--nudge);">${nudgeRides.length} Rides</div>
         <p style="font-size:0.86rem;color:var(--text-muted);margin:6px 0 0;">
-          These rides <strong>look</strong> spooky or intense from the outside, but the actual ride motion (Thrill) is totally in Benny's wheelhouse!
+          Rides that <strong>look</strong> spooky (or Benny marked 👻 Looks Too Scary), but the actual ride motion is right in his fun zone!
         </p>
       </div>
     </div>
 
-    <h2 class="section-heading">🚀 Brave Nudge Zone — Rides Worth Pushing a Little For!</h2>
+    <h2 class="section-heading">🚀 Brave Nudge Zone — Worth Pushing a Little For!</h2>
     ${
       nudgeRides.length > 0
         ? `<div class="rides-grid">
@@ -616,12 +662,12 @@ function renderPredictionsDashboard(profile) {
                   <span class="pred-badge">🚀 Nudge</span>
                 </div>
                 <div class="pred-scores">
-                  <span>⚡ Thrill Match: ${pred.thrillScore}/5</span>
-                  <span>👻 Scare Match: ${pred.scareScore}/5</span>
+                  <span>🎉 Predicted Fun: ${pred.predictedFun}/5</span>
+                  <span>👻 Scare Comfort: ${pred.predictedScareComfort}/5</span>
                 </div>
                 <p style="font-size:0.83rem;margin:0;color:var(--text-muted);">
                   <strong>Motion:</strong> ${ride.thrillDesc}<br/>
-                  <strong>Sets/Lighting:</strong> ${ride.scareDesc}
+                  <strong>Sets/Lights:</strong> ${ride.scareDesc}
                 </p>
                 <p class="nudge-tip" style="background:var(--nudge-bg);padding:8px 10px;border-radius:8px;border:none;">
                   💡 <strong>Why Benny can handle this:</strong> ${ride.nudgeTip}
@@ -631,10 +677,10 @@ function renderPredictionsDashboard(profile) {
               )
               .join("")}
           </div>`
-        : `<div class="dash-card"><p style="margin:0;color:var(--text-muted);">No Brave Nudge rides right now (either Benny already loves spooky rides, or "Keep It Safe" is selected in the quiz!).</p></div>`
+        : `<div class="dash-card"><p style="margin:0;color:var(--text-muted);">No Brave Nudge rides flagged right now—rate more rides or tap 👻 Looks Too Scary on rides you're unsure about!</p></div>`
     }
 
-    <h2 class="section-heading">🌟 Top Predicted Rides (4–5 / 5 Match)</h2>
+    <h2 class="section-heading">🌟 Top Predicted Fun Rides (4–5 / 5)</h2>
     <div class="rides-grid">
       ${topRides
         .slice(0, 24)
@@ -646,11 +692,11 @@ function renderPredictionsDashboard(profile) {
               <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);">${ride.parkIcon} ${ride.parkName} · ${ride.land}</div>
               <h4 class="ride-name">${ride.name}</h4>
             </div>
-            <span class="pred-badge">${pred.overallScore}/5</span>
+            <span class="pred-badge">${pred.predictedFun}/5 Fun</span>
           </div>
           <div class="pred-scores">
-            <span>⚡ Thrill: ${pred.thrillScore}/5</span>
-            <span>👻 Scare: ${pred.scareScore}/5</span>
+            <span>🎉 Fun: ${pred.predictedFun}/5</span>
+            <span>👻 Scare Comfort: ${pred.predictedScareComfort}/5</span>
           </div>
           <p style="font-size:0.82rem;margin:0;color:var(--text-muted);">${ride.thrillDesc}</p>
         </div>
@@ -671,18 +717,27 @@ function renderCheatSheet(profile) {
       for (const ride of land.rides) {
         const entry = state.rides[ride.id] || {};
         const pred = predictRide(ride, profile);
-        const status = entry.ridden
-          ? `✓ Ridden (${entry.enjoy === "love" ? "😍 Loved" : entry.enjoy === "ok" ? "😐 Okay" : entry.enjoy === "nope" ? "😬 Too Much" : "Rated"})`
-          : pred.badgeText;
+        const thrillText = entry.ridden
+          ? THRILL_LABELS.find((t) => t.val === entry.thrillFeel)?.short ?? "—"
+          : `${ride.thrillBase}/5`;
+        const scareText = entry.ridden
+          ? SCARE_LABELS.find((s) => s.val === entry.scareFeel)?.short ?? "—"
+          : `${pred.predictedScareComfort}/5`;
+        const funText = entry.ridden
+          ? entry.fun
+            ? `<strong>${entry.fun}/5</strong>`
+            : "—"
+          : `<strong>${pred.predictedFun}/5</strong>`;
+        const status = entry.ridden ? "✓ Ridden" : pred.badgeText;
 
         rows.push(`
           <tr>
             <td><strong>${ride.name}</strong></td>
             <td>${land.name}</td>
             <td>${ride.height}</td>
-            <td>${entry.ridden ? (entry.thrill ?? "—") : `${pred.thrillScore}/5`}</td>
-            <td>${entry.ridden ? (entry.scare ?? "—") : `${pred.scareScore}/5`}</td>
-            <td>${entry.ridden ? "—" : `<strong>${pred.overallScore}/5</strong>`}</td>
+            <td>${funText}</td>
+            <td>${thrillText}</td>
+            <td>${scareText}</td>
             <td>${status}</td>
           </tr>
         `);
@@ -698,9 +753,9 @@ function renderCheatSheet(profile) {
               <th>Ride</th>
               <th>Land</th>
               <th>Height</th>
+              <th>🎉 Fun</th>
               <th>⚡ Thrill</th>
-              <th>👻 Scare</th>
-              <th>🎯 Match</th>
+              <th>👻 Scare Comfort</th>
               <th>Status / Advice</th>
             </tr>
           </thead>
@@ -737,24 +792,6 @@ function showToast(msg) {
 
 // EVENT DELEGATION
 document.addEventListener("click", (e) => {
-  // Collapse calibration quiz
-  if (e.target.closest("#calibration-toggle")) {
-    state.ui.quizCollapsed = !state.ui.quizCollapsed;
-    saveState();
-    renderQuizControls();
-    return;
-  }
-
-  // Calibration quiz pills
-  const quizBtn = e.target.closest(".pill-scale button");
-  if (quizBtn) {
-    const key = quizBtn.parentElement.dataset.quiz;
-    state.quiz[key] = Number(quizBtn.dataset.val);
-    saveState();
-    renderAll();
-    return;
-  }
-
   // View tabs
   const viewTab = e.target.closest(".view-tab");
   if (viewTab) {
@@ -801,39 +838,39 @@ document.addEventListener("click", (e) => {
     const card = actionBtn.closest("[data-ride-id]");
     if (!card) return;
     const rideId = card.dataset.rideId;
-    const current = state.rides[rideId] || { ridden: false, thrill: null, scare: null, enjoy: null };
+    const current = migrateEntry(state.rides[rideId]);
     const action = actionBtn.dataset.action;
     const val = actionBtn.dataset.val;
-
     const prevProfile = computeBennyProfile();
 
     if (action === "set-ridden") {
       current.ridden = val === "true";
-    } else if (action === "set-thrill") {
+    } else if (action === "set-fun") {
       const n = Number(val);
-      current.thrill = current.thrill === n ? null : n;
-    } else if (action === "set-scare") {
+      current.fun = current.fun === n ? null : n;
+    } else if (action === "set-thrill-feel") {
       const n = Number(val);
-      current.scare = current.scare === n ? null : n;
-    } else if (action === "set-enjoy") {
-      current.enjoy = current.enjoy === val ? null : val;
+      current.thrillFeel = current.thrillFeel === n ? null : n;
+    } else if (action === "set-scare-feel") {
+      const n = Number(val);
+      current.scareFeel = current.scareFeel === n ? null : n;
+    } else if (action === "set-gut") {
+      current.gut = current.gut === val ? null : val;
     }
 
     state.rides[rideId] = current;
     saveState();
     renderAll();
 
-    if (current.ridden) {
-      const nextProfile = computeBennyProfile();
-      const tDelta = nextProfile.thrillComfort - prevProfile.thrillComfort;
-      const sDelta = nextProfile.scareComfort - prevProfile.scareComfort;
-      if (Math.abs(tDelta) >= 0.05 || Math.abs(sDelta) >= 0.05) {
-        showToast(
-          `Predictions updated! ⚡ Thrill: ${nextProfile.thrillComfort.toFixed(1)}/5 · 👻 Scare: ${nextProfile.scareComfort.toFixed(1)}/5`
-        );
-      } else if (action === "set-enjoy" || action === "set-ridden") {
-        showToast("Saved! Predictions recalculated across all 7 parks.");
-      }
+    const nextProfile = computeBennyProfile();
+    const tDelta = nextProfile.thrillSweetSpot - prevProfile.thrillSweetSpot;
+    const sDelta = nextProfile.scareComfort - prevProfile.scareComfort;
+    if (current.ridden && (Math.abs(tDelta) >= 0.05 || Math.abs(sDelta) >= 0.05)) {
+      showToast(
+        `Predictions updated! 🎯 Thrill Sweet Spot: ${nextProfile.thrillSweetSpot.toFixed(1)}/5 · 👻 Scare Comfort: ${nextProfile.scareComfort.toFixed(1)}/5`
+      );
+    } else if (current.ridden && (action === "set-fun" || action === "set-thrill-feel" || action === "set-scare-feel")) {
+      showToast("Saved! Fun & Scare predictions updated across all 7 parks.");
     }
     return;
   }
@@ -869,7 +906,7 @@ document.addEventListener("click", (e) => {
   }
 
   if (e.target.id === "btn-reset") {
-    if (confirm("Reset all of Benny's ride ratings and quiz answers?")) {
+    if (confirm("Reset all of Benny's ride ratings?")) {
       state = structuredClone(DEFAULT_STATE);
       saveState();
       renderAll();
@@ -891,8 +928,7 @@ document.addEventListener("change", (e) => {
       try {
         const imported = JSON.parse(ev.target.result);
         state = {
-          quiz: { ...DEFAULT_STATE.quiz, ...(imported.quiz || {}) },
-          rides: imported.rides || {},
+          rides: migrateRidesMap(imported.rides),
           ui: { ...DEFAULT_STATE.ui, ...(imported.ui || {}) }
         };
         saveState();

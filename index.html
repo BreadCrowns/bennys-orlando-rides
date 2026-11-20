@@ -12,23 +12,22 @@
       <div class="hero-badge">🎢 Walt Disney World &amp; Universal Orlando</div>
       <h1>Benny's Orlando Ride Explorer</h1>
       <p class="hero-subtitle">
-        Rate the rides you've been on, guess the ones you haven't, and discover your
-        <strong>1–5 Thrill &amp; Scare Match</strong> across all 7 parks!
+        Rate how <strong>fun</strong>, <strong>thrilling</strong>, or <strong>spooky</strong> each ride was—from <em>Too Boring</em> to <em>Too Much</em>—and see your <strong>Predicted Fun (1–5)</strong> &amp; <strong>Scare Comfort (1–5)</strong> across all 7 parks!
       </p>
 
       <div class="legend-pills">
         <div class="legend-pill legend-thrill">
           <span class="legend-icon">⚡</span>
           <div>
-            <strong>Thrill Factor (1–5)</strong>
-            <span>Locomotion: speed, drops, launches, loops, spinning</span>
+            <strong>Thrill (Motion)</strong>
+            <span>Too Boring → Chill → Just Right! → Wild → Too Much</span>
           </div>
         </div>
         <div class="legend-pill legend-scare">
           <span class="legend-icon">👻</span>
           <div>
-            <strong>Scare Factor (1–5)</strong>
-            <span>Atmosphere: darkness, lighting, set dressings, spooky vibes</span>
+            <strong>Scare (Sets &amp; Lighting)</strong>
+            <span>Not Scary → Fun Spooky → A Little Scary → Too Scary!</span>
           </div>
         </div>
       </div>
@@ -40,61 +39,10 @@
   </header>
 
   <main class="container main-content">
-    <!-- Quick Calibration Quiz -->
-    <section class="calibration-card" id="calibration-card">
-      <div class="calibration-header" id="calibration-toggle">
-        <div>
-          <h2>🧭 Benny's Quick Ride Quiz</h2>
-          <p>Answer 4 quick questions to help predict your 1–5 ride matches (updates automatically as you rate rides too!)</p>
-        </div>
-        <button class="btn-ghost" type="button" id="calibration-collapse-btn">Hide Quiz</button>
-      </div>
-      <div class="calibration-body" id="calibration-body">
-        <div class="quiz-grid">
-          <div class="quiz-item">
-            <label>⚡ How big of a <strong>Thrill</strong> (speed, drops, loops) do you like?</label>
-            <div class="pill-scale" data-quiz="thrillPref">
-              <button type="button" data-val="1">1 · Chill</button>
-              <button type="button" data-val="2">2 · Mild</button>
-              <button type="button" data-val="3">3 · Medium</button>
-              <button type="button" data-val="4">4 · Fast</button>
-              <button type="button" data-val="5">5 · Wild!</button>
-            </div>
-          </div>
-          <div class="quiz-item">
-            <label>👻 How much <strong>Scare</strong> (darkness, monsters, spooky sets) is okay?</label>
-            <div class="pill-scale" data-quiz="scarePref">
-              <button type="button" data-val="1">1 · Bright</button>
-              <button type="button" data-val="2">2 · A Little</button>
-              <button type="button" data-val="3">3 · Spooky-ish</button>
-              <button type="button" data-val="4">4 · Scary</button>
-              <button type="button" data-val="5">5 · Bring It!</button>
-            </div>
-          </div>
-          <div class="quiz-item">
-            <label>🚀 Ready to be <strong>pushed a little</strong> on rides that look scarier than they feel?</label>
-            <div class="pill-scale" data-quiz="nudgeWillingness">
-              <button type="button" data-val="0">Keep It Safe</button>
-              <button type="button" data-val="1">Tiny Nudge</button>
-              <button type="button" data-val="2">Push Me! 🚀</button>
-            </div>
-          </div>
-          <div class="quiz-item">
-            <label>🌀 How do you feel about <strong>spinning</strong> rides (like Teacups)?</label>
-            <div class="pill-scale" data-quiz="spinPref">
-              <button type="button" data-val="1">No Spin</button>
-              <button type="button" data-val="2">A Little</button>
-              <button type="button" data-val="3">Love It!</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- Main Navigation Tabs -->
     <nav class="view-tabs" aria-label="Main Views">
       <button type="button" class="view-tab active" data-view="explorer">🗺️ Parks &amp; Rides Quiz</button>
-      <button type="button" class="view-tab" data-view="predictions">🔮 1–5 Predictions &amp; Brave Nudges</button>
+      <button type="button" class="view-tab" data-view="predictions">🔮 Fun Predictions &amp; Brave Nudges</button>
       <button type="button" class="view-tab" data-view="cheatsheet">📋 Park Cheat Sheet &amp; Save</button>
     </nav>
 
@@ -120,7 +68,7 @@
         <button type="button" class="filter-chip" data-filter="unridden">Not Ridden Yet</button>
         <button type="button" class="filter-chip" data-filter="ridden">Ridden Before</button>
         <button type="button" class="filter-chip" data-filter="nudge">🚀 Brave Nudge Zone</button>
-        <button type="button" class="filter-chip" data-filter="top-match">🌟 Top Matches (4–5/5)</button>
+        <button type="button" class="filter-chip" data-filter="top-match">🌟 Top Fun Picks (4–5/5)</button>
       </div>
 
       <div id="rides-container">

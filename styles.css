@@ -498,6 +498,105 @@ body {
   border-color: var(--scare-border);
 }
 
+.rating-box.fun-box {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.fun-box .scale-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.goldilocks-scale {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+}
+
+.goldilocks-btn {
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #ffffff;
+  padding: 6px 4px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  cursor: pointer;
+  color: var(--text);
+  text-align: center;
+}
+
+.goldilocks-btn:hover {
+  background: #f1f5f9;
+}
+
+.thrill-box .goldilocks-btn.active {
+  background: var(--thrill);
+  color: #ffffff;
+  border-color: var(--thrill);
+}
+
+.scare-box .goldilocks-btn.active {
+  background: var(--scare);
+  color: #ffffff;
+  border-color: var(--scare);
+}
+
+.gut-box {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.gut-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.gut-btn {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 0.79rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--text);
+  text-align: center;
+}
+
+.gut-btn:hover {
+  background: #f1f5f9;
+}
+
+.gut-btn.active-fun {
+  background: var(--good-bg);
+  border-color: var(--good);
+  color: #15803d;
+}
+
+.gut-btn.active-boring {
+  background: #f1f5f9;
+  border-color: #64748b;
+  color: #334155;
+}
+
+.gut-btn.active-intense {
+  background: var(--thrill-bg);
+  border-color: var(--thrill);
+  color: #c2410c;
+}
+
+.gut-btn.active-scary {
+  background: var(--scare-bg);
+  border-color: var(--scare);
+  color: #5b21b6;
+}
+
 .rating-box-header {
   display: flex;
   justify-content: space-between;
