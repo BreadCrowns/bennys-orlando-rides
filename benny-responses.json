@@ -1,4 +1,313 @@
-{
-  "updatedAt": 0,
-  "rides": {}
+﻿{
+    "updatedAt":  1795209682776,
+    "rides":  {
+                  "mk-wdw-railroad":  {
+                                          "ridden":  true,
+                                          "fun":  1,
+                                          "thrillFeel":  1,
+                                          "scareFeel":  1,
+                                          "gut":  null
+                                      },
+                  "mk-main-street-vehicles":  {
+                                                  "ridden":  false,
+                                                  "fun":  null,
+                                                  "thrillFeel":  null,
+                                                  "scareFeel":  null,
+                                                  "gut":  "boring"
+                                              },
+                  "mk-jungle-cruise":  {
+                                           "ridden":  true,
+                                           "fun":  2,
+                                           "thrillFeel":  2,
+                                           "scareFeel":  2,
+                                           "gut":  null
+                                       },
+                  "mk-pirates":  {
+                                     "ridden":  false,
+                                     "fun":  null,
+                                     "thrillFeel":  null,
+                                     "scareFeel":  null,
+                                     "gut":  "fun"
+                                 },
+                  "mk-magic-carpets":  {
+                                           "ridden":  false,
+                                           "fun":  null,
+                                           "thrillFeel":  null,
+                                           "scareFeel":  null,
+                                           "gut":  "boring"
+                                       },
+                  "mk-big-thunder":  {
+                                         "ridden":  true,
+                                         "fun":  4,
+                                         "thrillFeel":  3,
+                                         "scareFeel":  2,
+                                         "gut":  null
+                                     },
+                  "mk-tianas-bayou":  {
+                                          "ridden":  true,
+                                          "fun":  4,
+                                          "thrillFeel":  3,
+                                          "scareFeel":  2,
+                                          "gut":  null
+                                      },
+                  "mk-haunted-mansion":  {
+                                             "ridden":  false,
+                                             "fun":  null,
+                                             "thrillFeel":  null,
+                                             "scareFeel":  null,
+                                             "gut":  "scary"
+                                         },
+                  "mk-seven-dwarfs":  {
+                                          "ridden":  true,
+                                          "fun":  2,
+                                          "thrillFeel":  1,
+                                          "scareFeel":  1,
+                                          "gut":  null
+                                      },
+                  "mk-peter-pan":  {
+                                       "ridden":  true,
+                                       "fun":  2,
+                                       "thrillFeel":  2,
+                                       "scareFeel":  1,
+                                       "gut":  null
+                                   },
+                  "mk-small-world":  {
+                                         "ridden":  true,
+                                         "fun":  2,
+                                         "thrillFeel":  1,
+                                         "scareFeel":  1,
+                                         "gut":  null
+                                     },
+                  "mk-winnie-the-pooh":  {
+                                             "ridden":  false,
+                                             "fun":  null,
+                                             "thrillFeel":  null,
+                                             "scareFeel":  null,
+                                             "gut":  "fun"
+                                         },
+                  "mk-little-mermaid":  {
+                                            "ridden":  true,
+                                            "fun":  1,
+                                            "thrillFeel":  1,
+                                            "scareFeel":  1,
+                                            "gut":  null
+                                        },
+                  "mk-mad-tea-party":  {
+                                           "ridden":  true,
+                                           "fun":  3,
+                                           "thrillFeel":  2,
+                                           "scareFeel":  1,
+                                           "gut":  null
+                                       },
+                  "mk-dumbo":  {
+                                   "ridden":  true,
+                                   "fun":  3,
+                                   "thrillFeel":  2,
+                                   "scareFeel":  1,
+                                   "gut":  null
+                               },
+                  "mk-carousel":  {
+                                      "ridden":  true,
+                                      "fun":  3,
+                                      "thrillFeel":  2,
+                                      "scareFeel":  1,
+                                      "gut":  null
+                                  },
+                  "mk-barnstormer":  {
+                                         "ridden":  false,
+                                         "fun":  null,
+                                         "thrillFeel":  null,
+                                         "scareFeel":  null,
+                                         "gut":  "fun"
+                                     },
+                  "mk-tron":  {
+                                  "ridden":  false,
+                                  "fun":  null,
+                                  "thrillFeel":  null,
+                                  "scareFeel":  null,
+                                  "gut":  "fun"
+                              },
+                  "mk-space-mountain":  {
+                                            "ridden":  false,
+                                            "fun":  null,
+                                            "thrillFeel":  null,
+                                            "scareFeel":  null,
+                                            "gut":  "fun"
+                                        },
+                  "mk-buzz-lightyear":  {
+                                            "ridden":  true,
+                                            "fun":  3,
+                                            "thrillFeel":  2,
+                                            "scareFeel":  2,
+                                            "gut":  null
+                                        },
+                  "mk-peoplemover":  {
+                                         "ridden":  true,
+                                         "fun":  1,
+                                         "thrillFeel":  1,
+                                         "scareFeel":  1,
+                                         "gut":  null
+                                     },
+                  "mk-astro-orbiter":  {
+                                           "ridden":  true,
+                                           "fun":  3,
+                                           "thrillFeel":  2,
+                                           "scareFeel":  1,
+                                           "gut":  null
+                                       },
+                  "mk-speedway":  {
+                                      "ridden":  true,
+                                      "fun":  3,
+                                      "thrillFeel":  3,
+                                      "scareFeel":  2,
+                                      "gut":  null
+                                  },
+                  "ep-spaceship-earth":  {
+                                             "ridden":  false,
+                                             "fun":  null,
+                                             "thrillFeel":  null,
+                                             "scareFeel":  null,
+                                             "gut":  null
+                                         },
+                  "ep-cosmic-rewind":  {
+                                           "ridden":  false,
+                                           "fun":  null,
+                                           "thrillFeel":  null,
+                                           "scareFeel":  null,
+                                           "gut":  "fun"
+                                       },
+                  "ep-test-track":  {
+                                        "ridden":  false,
+                                        "fun":  null,
+                                        "thrillFeel":  null,
+                                        "scareFeel":  null,
+                                        "gut":  "fun"
+                                    },
+                  "ep-mission-space-green":  {
+                                                 "ridden":  false,
+                                                 "fun":  null,
+                                                 "thrillFeel":  null,
+                                                 "scareFeel":  null,
+                                                 "gut":  "fun"
+                                             },
+                  "ep-mission-space-orange":  {
+                                                  "ridden":  false,
+                                                  "fun":  null,
+                                                  "thrillFeel":  null,
+                                                  "scareFeel":  null,
+                                                  "gut":  "intense"
+                                              },
+                  "ep-soarin":  {
+                                    "ridden":  true,
+                                    "fun":  3,
+                                    "thrillFeel":  2,
+                                    "scareFeel":  2,
+                                    "gut":  null
+                                },
+                  "ep-living-land":  {
+                                         "ridden":  false,
+                                         "fun":  null,
+                                         "thrillFeel":  null,
+                                         "scareFeel":  null,
+                                         "gut":  "boring"
+                                     },
+                  "ep-nemo":  {
+                                  "ridden":  true,
+                                  "fun":  1,
+                                  "thrillFeel":  1,
+                                  "scareFeel":  1,
+                                  "gut":  null
+                              },
+                  "ep-frozen":  {
+                                    "ridden":  false,
+                                    "fun":  null,
+                                    "thrillFeel":  null,
+                                    "scareFeel":  null,
+                                    "gut":  "boring"
+                                },
+                  "ep-remy":  {
+                                  "ridden":  false,
+                                  "fun":  null,
+                                  "thrillFeel":  null,
+                                  "scareFeel":  null,
+                                  "gut":  "fun"
+                              },
+                  "ep-gran-fiesta":  {
+                                         "ridden":  false,
+                                         "fun":  null,
+                                         "thrillFeel":  null,
+                                         "scareFeel":  null,
+                                         "gut":  "boring"
+                                     },
+                  "eu-stardust-racers":  {
+                                             "ridden":  false,
+                                             "fun":  null,
+                                             "thrillFeel":  null,
+                                             "scareFeel":  null,
+                                             "gut":  "intense"
+                                         },
+                  "eu-constellation-carousel":  {
+                                                    "ridden":  false,
+                                                    "fun":  null,
+                                                    "thrillFeel":  null,
+                                                    "scareFeel":  null,
+                                                    "gut":  "boring"
+                                                },
+                  "eu-battle-ministry":  {
+                                             "ridden":  false,
+                                             "fun":  null,
+                                             "thrillFeel":  null,
+                                             "scareFeel":  null,
+                                             "gut":  "intense"
+                                         },
+                  "eu-mine-cart-madness":  {
+                                               "ridden":  false,
+                                               "fun":  null,
+                                               "thrillFeel":  null,
+                                               "scareFeel":  null,
+                                               "gut":  "fun"
+                                           },
+                  "eu-mario-kart":  {
+                                        "ridden":  false,
+                                        "fun":  null,
+                                        "thrillFeel":  null,
+                                        "scareFeel":  null,
+                                        "gut":  "fun"
+                                    },
+                  "eu-wing-gliders":  {
+                                          "ridden":  false,
+                                          "fun":  null,
+                                          "thrillFeel":  null,
+                                          "scareFeel":  null,
+                                          "gut":  "fun"
+                                      },
+                  "eu-dragon-racer":  {
+                                          "ridden":  false,
+                                          "fun":  null,
+                                          "thrillFeel":  null,
+                                          "scareFeel":  null,
+                                          "gut":  "fun"
+                                      },
+                  "eu-fyre-drill":  {
+                                        "ridden":  false,
+                                        "fun":  null,
+                                        "thrillFeel":  null,
+                                        "scareFeel":  null,
+                                        "gut":  "fun"
+                                    },
+                  "eu-monsters-unchained":  {
+                                                "ridden":  false,
+                                                "fun":  null,
+                                                "thrillFeel":  null,
+                                                "scareFeel":  null,
+                                                "gut":  "scary"
+                                            },
+                  "eu-curse-werewolf":  {
+                                            "ridden":  false,
+                                            "fun":  null,
+                                            "thrillFeel":  null,
+                                            "scareFeel":  null,
+                                            "gut":  "intense"
+                                        }
+              }
 }
